@@ -554,7 +554,7 @@ def get_user_selections():
             "Step 6: LLM Provider", "Select your LLM provider"
         )
     )
-    selected_llm_provider, backend_url = select_llm_provider()
+    selected_llm_provider, backend_url, api_key = select_llm_provider()
 
     # Step 7: Thinking agents
     console.print(
@@ -562,8 +562,12 @@ def get_user_selections():
             "Step 7: Thinking Agents", "Select your thinking agents for analysis"
         )
     )
-    selected_shallow_thinker = select_shallow_thinking_agent(selected_llm_provider)
-    selected_deep_thinker = select_deep_thinking_agent(selected_llm_provider)
+    # Pass 9router context (base_url, api_key) for dynamic model fetching
+    model_ctx = {}
+    if selected_llm_provider == "9router":
+        model_ctx = {"base_url": backend_url or "http://localhost:20128/v1", "api_key": api_key or ""}
+    selected_shallow_thinker = select_shallow_thinking_agent(selected_llm_provider, **model_ctx)
+    selected_deep_thinker = select_deep_thinking_agent(selected_llm_provider, **model_ctx)
 
     # Step 8: Provider-specific thinking configuration
     thinking_level = None
@@ -603,6 +607,7 @@ def get_user_selections():
         "research_depth": selected_research_depth,
         "llm_provider": selected_llm_provider.lower(),
         "backend_url": backend_url,
+        "api_key": api_key,
         "shallow_thinker": selected_shallow_thinker,
         "deep_thinker": selected_deep_thinker,
         "google_thinking_level": thinking_level,
@@ -943,6 +948,7 @@ def run_analysis(checkpoint: bool = False):
     config["openai_reasoning_effort"] = selections.get("openai_reasoning_effort")
     config["anthropic_effort"] = selections.get("anthropic_effort")
     config["output_language"] = selections.get("output_language", "English")
+    config["api_key"] = selections.get("api_key")
     config["checkpoint_enabled"] = checkpoint
 
     # Create stats callback handler for tracking LLM/tool calls

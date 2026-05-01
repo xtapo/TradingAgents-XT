@@ -174,6 +174,55 @@ def select_openrouter_model() -> str:
     return choice
 
 
+def _fetch_9router_models(base_url: str, api_key: str = "") -> List[Tuple[str, str]]:
+    """Fetch available models from a 9Router instance."""
+    import requests
+    try:
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        url = base_url.rstrip("/") + "/models"
+        resp = requests.get(url, headers=headers, timeout=5)
+        resp.raise_for_status()
+        models = resp.json().get("data", [])
+        return [(m.get("id", "unknown"), m["id"]) for m in models]
+    except Exception as e:
+        console.print(f"\n[yellow]Could not fetch 9Router models: {e}[/yellow]")
+        console.print(f"[dim]Make sure 9Router is running at {base_url}[/dim]")
+        return []
+
+
+def select_9router_model(base_url: str, api_key: str = "") -> str:
+    """Select a 9Router model from available models, or enter a custom ID."""
+    models = _fetch_9router_models(base_url, api_key)
+
+    choices = [questionary.Choice(name, value=mid) for name, mid in models[:15]]
+    choices.append(questionary.Choice("Custom model ID", value="custom"))
+
+    choice = questionary.select(
+        "Select 9Router Model:",
+        choices=choices,
+        instruction="\n- Use arrow keys to navigate\n- Press Enter to select",
+        style=questionary.Style([
+            ("selected", "fg:magenta noinherit"),
+            ("highlighted", "fg:magenta noinherit"),
+            ("pointer", "fg:magenta noinherit"),
+        ]),
+    ).ask()
+
+    if choice is None or choice == "custom":
+        custom = questionary.text(
+            "Enter 9Router model ID (e.g. kr/claude-sonnet-4.5, cc/claude-opus-4-7):",
+            validate=lambda x: len(x.strip()) > 0 or "Please enter a model ID.",
+        ).ask()
+        if not custom:
+            console.print("\n[red]No model selected. Exiting...[/red]")
+            exit(1)
+        return custom.strip()
+
+    return choice
+
+
 def _prompt_custom_model_id() -> str:
     """Prompt user to type a custom model ID."""
     return questionary.text(
@@ -182,10 +231,16 @@ def _prompt_custom_model_id() -> str:
     ).ask().strip()
 
 
-def _select_model(provider: str, mode: str) -> str:
+def _select_model(provider: str, mode: str, **ctx) -> str:
     """Select a model for the given provider and mode (quick/deep)."""
     if provider.lower() == "openrouter":
         return select_openrouter_model()
+
+    if provider.lower() == "9router":
+        return select_9router_model(
+            base_url=ctx.get("base_url", "http://localhost:20128/v1"),
+            api_key=ctx.get("api_key", ""),
+        )
 
     if provider.lower() == "azure":
         return questionary.text(
@@ -219,14 +274,14 @@ def _select_model(provider: str, mode: str) -> str:
     return choice
 
 
-def select_shallow_thinking_agent(provider) -> str:
+def select_shallow_thinking_agent(provider, **ctx) -> str:
     """Select shallow thinking llm engine using an interactive selection."""
-    return _select_model(provider, "quick")
+    return _select_model(provider, "quick", **ctx)
 
 
-def select_deep_thinking_agent(provider) -> str:
+def select_deep_thinking_agent(provider, **ctx) -> str:
     """Select deep thinking llm engine using an interactive selection."""
-    return _select_model(provider, "deep")
+    return _select_model(provider, "deep", **ctx)
 
 def select_llm_provider() -> tuple[str, str | None]:
     """Select the LLM provider and its API endpoint."""
@@ -242,6 +297,7 @@ def select_llm_provider() -> tuple[str, str | None]:
         ("OpenRouter", "openrouter", "https://openrouter.ai/api/v1"),
         ("Azure OpenAI", "azure", None),
         ("Ollama", "ollama", "http://localhost:11434/v1"),
+        ("9Router", "9router", None),
     ]
 
     choice = questionary.select(
@@ -265,7 +321,30 @@ def select_llm_provider() -> tuple[str, str | None]:
         exit(1)
 
     provider, url = choice
-    return provider, url
+
+    # For 9Router: prompt for Base URL, API Key
+    if provider == "9router":
+        base_url = questionary.text(
+            "Enter 9Router Base URL:",
+            default="http://localhost:20128/v1",
+            validate=lambda x: len(x.strip()) > 0 or "Please enter a URL.",
+            style=questionary.Style([("text", "fg:green")]),
+        ).ask()
+        if not base_url:
+            console.print("\n[red]No URL provided. Exiting...[/red]")
+            exit(1)
+        url = base_url.strip()
+
+        api_key = questionary.text(
+            "Enter 9Router API Key (leave empty if not required):",
+            default="",
+            style=questionary.Style([("text", "fg:green")]),
+        ).ask()
+        api_key = (api_key or "").strip()
+
+        return provider, url, api_key
+
+    return provider, url, None
 
 
 def ask_openai_reasoning_effort() -> str:

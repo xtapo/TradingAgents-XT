@@ -149,6 +149,10 @@ class TradingAgentsGraph:
             if effort:
                 kwargs["effort"] = effort
 
+        # For 9router, pass through the API key from config
+        if self.config.get("api_key"):
+            kwargs["api_key"] = self.config["api_key"]
+
         return kwargs
 
     def _create_tool_nodes(self) -> Dict[str, ToolNode]:
